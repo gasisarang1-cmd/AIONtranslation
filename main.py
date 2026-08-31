@@ -1,6 +1,7 @@
 import sys
 import io
 import time
+import itertools
 import numpy as np
 from PIL import ImageGrab
 from google import genai
@@ -12,9 +13,18 @@ from PyQt5.QtCore import Qt, QRect, QTimer
 from PyQt5.QtGui import QPainter, QBrush, QColor, QPen
 
 # =========================================================
-# Gemini API 키 설정
-GEMINI_API_KEY = "AQ.Ab8RN6IN-_oj4m5SYxmRCnEZTSdEVpFWGrMAzPOIHv3BzSr4Yg"
+# Gemini API 키 목록 (5개 로테이션 설정)
 # =========================================================
+API_KEYS = [
+    "AQ.Ab8RN6KxFr2blTx8G9ihWDkf_oRcU6GLXoSkGuUWvUPH1KInTg",
+    "AQ.Ab8RN6IN-_oj4m5SYxmRCnEZTSdEVpFWGrMAzPOIHv3BzSr4Yg",
+    "AQ.Ab8RN6Kew75CbQBJdn7LltIFJXMIOSPjJXFS_OmqUMw6O0oZsQ",
+    "AQ.Ab8RN6L_92uzWEP5I5djNNbdfb6kLyMBf375rWq6dOwmaEhoJg",
+    "AQ.Ab8RN6IEIy2W4qwLD0NqUxia-9HW_yhPaAs-HX4ZV2xyQnG3dA",
+]
+
+# API 키 순환 객체
+KEY_CYCLE = itertools.cycle(API_KEYS)
 
 class ScreenCaptureTool(QWidget):
     def __init__(self):
@@ -66,7 +76,6 @@ class ScreenCaptureTool(QWidget):
 class PersistentAutoTranslatorApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.ai_client = genai.Client(api_key=GEMINI_API_KEY)
         self.target_coords = None
         self.prev_img_array = None
         self.is_processing = False
@@ -80,7 +89,7 @@ class PersistentAutoTranslatorApp(QWidget):
     def initUI(self):
         self.setWindowTitle("Gemini 미니 지속 번역기")
         self.setGeometry(100, 100, 380, 360)
-        self.setWindowFlags(Qt.WindowStaysOnTopHint) # 미니 툴 창 항상 위 유지
+        self.setWindowFlags(Qt.WindowStaysOnTopHint)
 
         layout = QVBoxLayout()
 
@@ -97,7 +106,7 @@ class PersistentAutoTranslatorApp(QWidget):
         
         self.spin_interval = QSpinBox(self)
         self.spin_interval.setRange(2, 60)
-        self.spin_interval.setValue(5) # 429 방지를 위해 5초 권장
+        self.spin_interval.setValue(5)
         
         timer_layout.addWidget(lbl_timer)
         timer_layout.addWidget(self.spin_interval)
@@ -171,7 +180,7 @@ class PersistentAutoTranslatorApp(QWidget):
         img_rgb = img.convert("RGB")
         curr_img_array = np.array(img_rgb)
 
-        # 2. 화면 변화 감지 (차이 threshold 18.0으로 설정해 미세 노이즈 오호출 방지)
+        # 2. 화면 변화 감지
         if self.prev_img_array is not None:
             diff = np.mean(np.abs(curr_img_array.astype(float) - self.prev_img_array.astype(float)))
             if diff < 18.0:
@@ -185,10 +194,6 @@ class PersistentAutoTranslatorApp(QWidget):
         img_rgb.save(buffer, format="JPEG", quality=90)
         image_bytes = buffer.getvalue()
 
-        # 3. 429 에러 대응 자동 재시도 로직 (Maximum 3회)
-        max_retries = 3
-        delay = 3  # 대기 시간 (초)
-
         prompt = """
         너는 전문 번역가야.
         이미지 속에 있는 외국어(중국어, 영어 등)를 한국어로 매끄럽고 자연스럽게 번역해줘.
@@ -198,10 +203,18 @@ class PersistentAutoTranslatorApp(QWidget):
         2. 오직 자연스럽게 번역된 한국어 텍스트만 깔끔하게 출력해줘.
         """
 
+        # 등록된 키 개수만큼 로테이션 시도
+        max_retries = len(API_KEYS)
+
         for attempt in range(max_retries):
+            current_key = next(KEY_CYCLE)
             try:
-                response = self.ai_client.models.generate_content(
-                    model='gemini-3.6-flash',
+                # 요청 시마다 현재 순번의 API 키로 클라이언트 생성
+                client = genai.Client(api_key=current_key)
+                
+                # 모델명 수정: gemini-1.5-flash
+                response = client.models.generate_content(
+                    model='gemini-1.5-flash',
                     contents=[
                         types.Part.from_bytes(data=image_bytes, mime_type='image/jpeg'),
                         prompt
@@ -213,18 +226,18 @@ class PersistentAutoTranslatorApp(QWidget):
                 )
                 self.txt_result.setText(response.text.strip())
                 self.lbl_status.setText(f"상태: 고정 영역을 {self.spin_interval.value()}초 간격으로 감지 중...")
-                break # 성공 시 탈출
+                break # 성공 시 루프 탈출
 
             except Exception as e:
                 err_msg = str(e)
                 if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
+                    print(f"[429 감지] API 키({current_key[:10]}...) 한도 초과. 다음 키로 자동 전환합니다.")
                     if attempt < max_retries - 1:
-                        self.lbl_status.setText(f"⚠️ 요청 대기 중... {delay}초 후 재시도 ({attempt + 1}/{max_retries})")
+                        self.lbl_status.setText(f"⚠️ 429 제한 발생. 다음 키로 재시도 중... ({attempt + 1}/{max_retries})")
                         QApplication.processEvents()
-                        time.sleep(delay)
-                        delay *= 2
+                        time.sleep(1)
                     else:
-                        self.lbl_status.setText("⚠️ API 제한 도착. 주기를 5초 이상으로 조정하세요.")
+                        self.lbl_status.setText("⚠️ 등록된 모든 API 키의 사용 한도가 초과되었습니다.")
                 else:
                     self.lbl_status.setText(f"오류 발생: {e}")
                     break
