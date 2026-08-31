@@ -135,39 +135,3 @@ if __name__ == '__main__':
     ex = GeminiTranslatorApp()
     ex.show()
     sys.exit(app.exec_())
-방안 1 선택 시 .github/workflows/build.yml:
-
-YAML
-name: Build Windows EXE
-
-on:
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: windows-latest
-
-    steps:
-    - name: Check out repository
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-        cache: 'pip'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install PyQt5 pillow google-genai pyinstaller
-
-    - name: Build EXE with PyInstaller
-      run: |
-        pyinstaller --noconfirm --noconsole --onefile main.py
-
-    - name: Upload EXE artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: GeminiTranslator-EXE
-        path: dist/main.exe
