@@ -3,7 +3,7 @@ import io
 import time
 import itertools
 import numpy as np
-from PIL import ImageGrab
+from PIL import Image, ImageGrab
 from google import genai
 from google.genai import types
 from PyQt5.QtWidgets import (QApplication, QWidget, QPushButton, 
@@ -23,7 +23,6 @@ API_KEYS = [
     "AQ.Ab8RN6IEIy2W4qwLD0NqUxia-9HW_yhPaAs-HX4ZV2xyQnG3dA",
 ]
 
-# API 키 순환 객체
 KEY_CYCLE = itertools.cycle(API_KEYS)
 
 class ScreenCaptureTool(QWidget):
@@ -80,7 +79,6 @@ class PersistentAutoTranslatorApp(QWidget):
         self.prev_img_array = None
         self.is_processing = False
         
-        # 지속적 자동 캡처 타이머
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.auto_capture_and_translate)
         
@@ -93,14 +91,12 @@ class PersistentAutoTranslatorApp(QWidget):
 
         layout = QVBoxLayout()
 
-        # 1. 고정 캡처 영역 지정 버튼
         self.btn_select = QPushButton("1. 캡처 영역 지정 (1회 설정)", self)
         self.btn_select.setFixedHeight(40)
         self.btn_select.setStyleSheet("font-size: 13px; font-weight: bold; background-color: #2196F3; color: white;")
         self.btn_select.clicked.connect(self.select_area)
         layout.addWidget(self.btn_select)
 
-        # 2. 캡처 반복 주기 설정
         timer_layout = QHBoxLayout()
         lbl_timer = QLabel("캡처 주기(초):", self)
         
@@ -112,7 +108,6 @@ class PersistentAutoTranslatorApp(QWidget):
         timer_layout.addWidget(self.spin_interval)
         layout.addLayout(timer_layout)
 
-        # 3. 지속 캡처 시작/중지 버튼
         self.btn_toggle = QPushButton("2. 지정 영역 지속 캡처 시작", self)
         self.btn_toggle.setFixedHeight(40)
         self.btn_toggle.setEnabled(False)
@@ -120,12 +115,10 @@ class PersistentAutoTranslatorApp(QWidget):
         self.btn_toggle.clicked.connect(self.toggle_auto_translate)
         layout.addWidget(self.btn_toggle)
 
-        # 상태 안내
         self.lbl_status = QLabel("상태: 번역할 영역을 먼저 지정해 주세요.", self)
         self.lbl_status.setStyleSheet("color: #555555;")
         layout.addWidget(self.lbl_status)
 
-        # 번역 결과창
         self.txt_result = QTextEdit(self)
         self.txt_result.setPlaceholderText("지정된 영역의 화면 변경이 감지되면 매끄러운 한국어 번역 결과가 표시됩니다.")
         self.txt_result.setReadOnly(True)
@@ -175,44 +168,44 @@ class PersistentAutoTranslatorApp(QWidget):
         if self.is_processing or not self.target_coords:
             return
 
-        # 1. 설정된 고정 영역 캡처
+        # 1. 화면 캡처 및 이미지 2배 확대 (OCR 인식률 극대화)
         img = ImageGrab.grab(bbox=self.target_coords)
         img_rgb = img.convert("RGB")
+        original_w, original_h = img_rgb.size
+        img_rgb = img_rgb.resize((original_w * 2, original_h * 2), Image.BICUBIC)
+        
         curr_img_array = np.array(img_rgb)
 
         # 2. 화면 변화 감지
         if self.prev_img_array is not None:
-            diff = np.mean(np.abs(curr_img_array.astype(float) - self.prev_img_array.astype(float)))
-            if diff < 18.0:
-                return
+            if self.prev_img_array.shape == curr_img_array.shape:
+                diff = np.mean(np.abs(curr_img_array.astype(float) - self.prev_img_array.astype(float)))
+                if diff < 5.0:  # 감지 민감도 최적화
+                    return
 
         self.prev_img_array = curr_img_array
         self.is_processing = True
         self.lbl_status.setText("상태: 영역 변화 감지! Gemini 분석 중...")
 
         buffer = io.BytesIO()
-        img_rgb.save(buffer, format="JPEG", quality=90)
+        img_rgb.save(buffer, format="JPEG", quality=95)
         image_bytes = buffer.getvalue()
 
+        # 3. 인식률 개선 프롬프트
         prompt = """
-        너는 전문 번역가야.
-        이미지 속에 있는 외국어(중국어, 영어 등)를 한국어로 매끄럽고 자연스럽게 번역해줘.
-
-        [지침]
-        1. 의성어, 의태어, 게임 용어, 문맥상의 의미를 고려해서 가장 자연스러운 한국어로 의역해줘.
-        2. 오직 자연스럽게 번역된 한국어 텍스트만 깔끔하게 출력해줘.
+        너는 게임 전문 번역가야.
+        1. 이미지 속 한자(아이디/닉네임 등)와 한글, 숫자를 정확히 읽어내라.
+        2. 한자는 한국식 한자음(예: 荷花小仙 -> 연화소선)으로 읽거나 자연스럽게 의역해라.
+        3. 다른 설명 없이 번역 결과만 한 줄씩 깔끔하게 출력해라.
         """
 
-        # 등록된 키 개수만큼 로테이션 시도
         max_retries = len(API_KEYS)
 
         for attempt in range(max_retries):
             current_key = next(KEY_CYCLE)
             try:
-                # 요청 시마다 현재 순번의 API 키로 클라이언트 생성
                 client = genai.Client(api_key=current_key)
                 
-                # 모델명 수정: gemini-1.5-flash
                 response = client.models.generate_content(
                     model='gemini-3.6-flash',
                     contents=[
@@ -221,19 +214,20 @@ class PersistentAutoTranslatorApp(QWidget):
                     ],
                     config=types.GenerateContentConfig(
                         max_output_tokens=300,
-                        temperature=0.7
+                        temperature=0.2  # 정확도를 위해 낮게 설정
                     )
                 )
-                self.txt_result.setText(response.text.strip())
+                
+                result_text = response.text.strip() if response.text else "인식된 텍스트가 없습니다."
+                self.txt_result.setText(result_text)
                 self.lbl_status.setText(f"상태: 고정 영역을 {self.spin_interval.value()}초 간격으로 감지 중...")
-                break # 성공 시 루프 탈출
+                break
 
             except Exception as e:
                 err_msg = str(e)
                 if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
-                    print(f"[429 감지] API 키({current_key[:10]}...) 한도 초과. 다음 키로 자동 전환합니다.")
                     if attempt < max_retries - 1:
-                        self.lbl_status.setText(f"⚠️ 429 제한 발생. 다음 키로 재시도 중... ({attempt + 1}/{max_retries})")
+                        self.lbl_status.setText(f"⚠️ 429 제한 발생. 다음 키로 재시도 중...")
                         QApplication.processEvents()
                         time.sleep(1)
                     else:
