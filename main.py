@@ -169,7 +169,7 @@ class ManualTranslatorApp(QWidget):
                 client = genai.Client(api_key=current_key)
                 
                 response = client.models.generate_content(
-                    model='gemini-3.6-flash',
+                    model='gemini-2.0-flash',
                     contents=[
                         types.Part.from_bytes(data=image_bytes, mime_type='image/jpeg'),
                         prompt
