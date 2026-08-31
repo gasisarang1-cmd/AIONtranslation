@@ -71,7 +71,7 @@ class GeminiTranslatorApp(QWidget):
         
         # 실시간 캡처용 타이머 설정 (1500ms = 1.5초 주기)
         self.timer = QTimer(self)
-        self.timer.setInterval(1500)
+        self.timer.setInterval(4000)
         self.timer.timeout.connect(self.capture_and_translate)
         
         self.initUI()
@@ -153,7 +153,7 @@ class GeminiTranslatorApp(QWidget):
         if self.prev_img_array is not None:
             # 픽셀값 차이의 평균을 계산
             diff = np.mean(np.abs(curr_img_array.astype(float) - self.prev_img_array.astype(float)))
-            if diff < 3.0: # 변화가 거의 없으면 API 통신 건너뜀 (속도/비용 최적화)
+            if diff < 15.0: # 변화가 거의 없으면 API 통신 건너뜀 (속도/비용 최적화)
                 return
 
         self.prev_img_array = curr_img_array
