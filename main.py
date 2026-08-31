@@ -1,4 +1,9 @@
+import os
 import sys
+
+# PyTorch 및 OpenMP DLL 중복 로드 / 초기화 에러(WinError 1114) 방지 설정
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
 import easyocr
 from PIL import ImageGrab
 from google import genai
