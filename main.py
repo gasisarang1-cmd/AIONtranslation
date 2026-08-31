@@ -1,6 +1,5 @@
 import sys
 import io
-import itertools
 from PIL import ImageGrab
 from google import genai
 from google.genai import types
@@ -10,17 +9,9 @@ from PyQt5.QtCore import Qt, QRect
 from PyQt5.QtGui import QPainter, QBrush, QColor, QPen
 
 # =========================================================
-# Gemini API 키 목록 (5개 로테이션)
+# 발급받으신 최신 API 키를 입력해 주세요.
 # =========================================================
-API_KEYS = [
-    "AQ.Ab8RN6KxFr2blTx8G9ihWDkf_oRcU6GLXoSkGuUWvUPH1KInTg",
-    "AQ.Ab8RN6IN-_oj4m5SYxmRCnEZTSdEVpFWGrMAzPOIHv3BzSr4Yg",
-    "AQ.Ab8RN6Kew75CbQBJdn7LltIFJXMIOSPjJXFS_OmqUMw6O0oZsQ",
-    "AQ.Ab8RN6L_92uzWEP5I5djNNbdfb6kLyMBf375rWq6dOwmaEhoJg",
-    "AQ.Ab8RN6IEIy2W4qwLD0NqUxia-9HW_yhPaAs-HX4ZV2xyQnG3dA",
-]
-
-KEY_CYCLE = itertools.cycle(API_KEYS)
+API_KEY = "AQ.Ab8RN6lajerU-jQ77G2R6FaE-PGCQDo3KYMY3K71w-DMGy2v1w"
 
 class ScreenCaptureTool(QWidget):
     """화면 드래그로 영역을 지정하는 투명 창"""
@@ -137,51 +128,38 @@ class ManualTranslatorApp(QWidget):
         self.lbl_status.setText("상태: 이미지 캡처 후 Gemini 분석 중...")
         QApplication.processEvents()
 
-        # 1. 화면 지정 영역 캡처 (2배 확대)
-        img = ImageGrab.grab(bbox=self.target_coords)
-        img_rgb = img.convert("RGB")
-        w, h = img_rgb.size
-        img_rgb = img_rgb.resize((w * 2, h * 2))
+        try:
+            # 1. 화면 지정 영역 캡처
+            img = ImageGrab.grab(bbox=self.target_coords)
+            img_rgb = img.convert("RGB")
+            w, h = img_rgb.size
+            img_rgb = img_rgb.resize((w * 2, h * 2))
 
-        buffer = io.BytesIO()
-        img_rgb.save(buffer, format="JPEG", quality=95)
-        image_bytes = buffer.getvalue()
+            buffer = io.BytesIO()
+            img_rgb.save(buffer, format="JPEG", quality=95)
+            image_bytes = buffer.getvalue()
 
-        # 2. 직관적인 번역 요청 프롬프트
-        prompt = "이 이미지 속 문장을 번역해줘. 한자/아이디/닉네임은 바꾸지 말고 한자 그대로 유지하고, 나머지 문장만 자연스러운 한국어로 완성해서 출력해줘."
+            # 2. 번역 프롬프트
+            prompt = "이 이미지 속 문장을 번역해줘. 한자/아이디/닉네임은 바꾸지 말고 한자 그대로 유지하고, 나머지 문장만 자연스러운 한국어로 완성해서 출력해줘."
 
-        max_retries = len(API_KEYS)
-        success = False
+            # 3. 최신 google-genai 전용 클라이언트 생성 및 호출
+            client = genai.Client(api_key=API_KEY)
+            
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=[
+                    types.Part.from_bytes(data=image_bytes, mime_type='image/jpeg'),
+                    prompt
+                ]
+            )
 
-        # 3. API 호출 (안정성이 검증된 gemini-1.5-flash 적용)
-        for attempt in range(max_retries):
-            current_key = next(KEY_CYCLE)
-            try:
-                client = genai.Client(api_key=current_key)
-                
-                response = client.models.generate_content(
-                    model='gemini-1.5-flash',
-                    contents=[
-                        types.Part.from_bytes(data=image_bytes, mime_type='image/jpeg'),
-                        prompt
-                    ]
-                )
-                
-                result_text = response.text.strip() if response.text else "인식된 텍스트가 없습니다."
-                self.txt_result.setText(result_text)
-                self.lbl_status.setText("상태: 번역 완료!")
-                success = True
-                break
+            result_text = response.text.strip() if response.text else "인식된 텍스트가 없습니다."
+            self.txt_result.setText(result_text)
+            self.lbl_status.setText("상태: 번역 완료!")
 
-            except Exception as e:
-                # 터미널 창에 실시간으로 실패 원인을 인쇄
-                print(f"[API 시도 {attempt + 1} 실패 에러]: {e}")
-                if attempt < max_retries - 1:
-                    self.lbl_status.setText(f"⚠️ 요청 지연. 재시도 중... ({attempt + 1}/{max_retries})")
-                    QApplication.processEvents()
-
-        if not success:
-            self.lbl_status.setText("⚠️ 번역 실패. 콘솔에 출력된 에러 로그를 확인해 주세요.")
+        except Exception as e:
+            print(f"[API 오류 원인]: {e}")
+            self.lbl_status.setText("⚠️ 번역 실패. 콘솔 로그를 확인해 주세요.")
 
         self.btn_capture.setEnabled(True)
 
