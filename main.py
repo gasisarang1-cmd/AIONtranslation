@@ -214,7 +214,7 @@ class PersistentAutoTranslatorApp(QWidget):
                 
                 # 모델명 수정: gemini-1.5-flash
                 response = client.models.generate_content(
-                    model='gemini-1.5-flash',
+                    model='gemini-3.6-flash',
                     contents=[
                         types.Part.from_bytes(data=image_bytes, mime_type='image/jpeg'),
                         prompt
