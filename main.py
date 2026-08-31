@@ -1,10 +1,5 @@
-import os
 import sys
-
-# PyTorch 및 OpenMP DLL 중복 로드 / 초기화 에러(WinError 1114) 방지 설정
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-
-import easyocr
+from rapidocr_onnxruntime import RapidOCR
 from PIL import ImageGrab
 from google import genai
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QPushButton
@@ -66,8 +61,9 @@ class ScreenCaptureTool(QWidget):
 class GeminiTranslatorApp(QWidget):
     def __init__(self):
         super().__init__()
-        print("OCR 모델 및 Gemini 클라이언트 로딩 중...")
-        self.ocr_reader = easyocr.Reader(['ch_sim', 'en'], gpu=False)
+        print("OCR 엔진 및 Gemini 클라이언트 로딩 중...")
+        # RapidOCR 초기화 (기본적으로 중국어/영어 모델 자동 포함)
+        self.ocr_engine = RapidOCR()
         
         self.ai_client = genai.Client(api_key=GEMINI_API_KEY)
         
@@ -113,8 +109,13 @@ class GeminiTranslatorApp(QWidget):
             self.process_ocr_and_translate("temp_capture.png")
 
     def process_ocr_and_translate(self, img_path):
-        results = self.ocr_reader.readtext(img_path)
-        extracted_text = " ".join([text for bbox, text, prob in results])
+        # RapidOCR 인식 수행
+        result, _ = self.ocr_engine(img_path)
+        
+        extracted_text = ""
+        if result:
+            # 인식 결과 추출 (bbox, text, score 중 text만 결합)
+            extracted_text = " ".join([line[1] for line in result])
         
         if not extracted_text.strip():
             self.lbl_original.setText("인식된 중국어: (인식된 글자 없음)")
