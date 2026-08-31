@@ -119,7 +119,7 @@ class GeminiTranslatorApp(QWidget):
             prompt = "이 이미지에 있는 외국어(중국어 등) 글자를 읽고, 매끄러운 한국어로 번역해줘. 오직 번역된 한국어 결과만 출력해."
             
             response = self.ai_client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-3.6-flash',
                 contents=[
                     types.Part.from_bytes(data=image_bytes, mime_type='image/png'),
                     prompt
