@@ -147,13 +147,13 @@ class ManualTranslatorApp(QWidget):
         img_rgb.save(buffer, format="JPEG", quality=95)
         image_bytes = buffer.getvalue()
 
-        # 2. 한자 닉네임을 원문 그대로 유지하도록 지정한 프롬프트
+        # 2. 직관적인 번역 요청 프롬프트
         prompt = "이 이미지 속 문장을 번역해줘. 한자/아이디/닉네임은 바꾸지 말고 한자 그대로 유지하고, 나머지 문장만 자연스러운 한국어로 완성해서 출력해줘."
 
         max_retries = len(API_KEYS)
         success = False
 
-        # 3. API 호출
+        # 3. API 호출 (안정성이 검증된 gemini-1.5-flash 적용)
         for attempt in range(max_retries):
             current_key = next(KEY_CYCLE)
             try:
@@ -164,10 +164,7 @@ class ManualTranslatorApp(QWidget):
                     contents=[
                         types.Part.from_bytes(data=image_bytes, mime_type='image/jpeg'),
                         prompt
-                    ],
-                    config=types.GenerateContentConfig(
-                        temperature=0.2
-                    )
+                    ]
                 )
                 
                 result_text = response.text.strip() if response.text else "인식된 텍스트가 없습니다."
@@ -177,13 +174,14 @@ class ManualTranslatorApp(QWidget):
                 break
 
             except Exception as e:
-                err_msg = str(e)
+                # 터미널 창에 실시간으로 실패 원인을 인쇄
+                print(f"[API 시도 {attempt + 1} 실패 에러]: {e}")
                 if attempt < max_retries - 1:
                     self.lbl_status.setText(f"⚠️ 요청 지연. 재시도 중... ({attempt + 1}/{max_retries})")
                     QApplication.processEvents()
 
         if not success:
-            self.lbl_status.setText("⚠️ 번역 실패. 다시 시도해 주세요.")
+            self.lbl_status.setText("⚠️ 번역 실패. 콘솔에 출력된 에러 로그를 확인해 주세요.")
 
         self.btn_capture.setEnabled(True)
 
