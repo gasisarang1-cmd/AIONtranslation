@@ -1,3 +1,4 @@
+
 name: Build Windows EXE
 
 on:
@@ -19,15 +20,14 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-        pip install PyQt5 pillow easyocr google-genai pyinstaller
+        pip install PyQt5 pillow google-genai rapidocr_onnxruntime pyinstaller
 
     - name: Build EXE with PyInstaller
       run: |
-        pyinstaller --noconfirm --onedir --windowed --collect-all torch --collect-all easyocr main.py
+        pyinstaller --noconfirm --noconsole --onefile main.py
 
     - name: Upload EXE artifact
       uses: actions/upload-artifact@v4
       with:
-        name: GeminiTranslator-Folder
-        path: dist/main/
+        name: GeminiTranslator-EXE
+        path: dist/main.exe
