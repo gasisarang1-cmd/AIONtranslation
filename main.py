@@ -79,7 +79,7 @@ class ManualTranslatorApp(QWidget):
 
     def initUI(self):
         self.setWindowTitle("Gemini 원클릭 수동 번역기")
-        self.setGeometry(100, 100, 400, 350)
+        self.setGeometry(100, 100, 420, 350)
         self.setWindowFlags(Qt.WindowStaysOnTopHint)
 
         layout = QVBoxLayout()
@@ -106,7 +106,7 @@ class ManualTranslatorApp(QWidget):
 
         # 결과 출력 창
         self.txt_result = QTextEdit(self)
-        self.txt_result.setPlaceholderText("버튼을 누르면 해당 영역을 캡처하여 Gemini에게 보낸 뒤, 해석된 한국어 결과를 여기에 표시합니다.")
+        self.txt_result.setPlaceholderText("버튼을 누르면 해당 영역을 캡처하여 해석된 매끄러운 한국어 문장을 출력합니다.")
         self.txt_result.setReadOnly(True)
         layout.addWidget(self.txt_result)
 
@@ -134,7 +134,7 @@ class ManualTranslatorApp(QWidget):
             return
 
         self.btn_capture.setEnabled(False)
-        self.lbl_status.setText("상태: 이미지 캡처 후 Gemini에 전달 중...")
+        self.lbl_status.setText("상태: 이미지 캡처 후 Gemini 분석 중...")
         QApplication.processEvents()
 
         # 1. 화면 지정 영역 캡처 및 화질 보완 (2배 확대)
@@ -147,18 +147,21 @@ class ManualTranslatorApp(QWidget):
         img_rgb.save(buffer, format="JPEG", quality=95)
         image_bytes = buffer.getvalue()
 
-        # 2. Gemini 프롬프트 작성
+        # 2. 한국어 정돈 출력용 시스템 프롬프트
         prompt = """
-        당신은 한국어와 중국어가 완벽한 게임 전문 번역가입니다.
-        1. 이미지 안에 있는 모든 텍스트(중국어, 한자 닉네임, 한글, 숫자)를 정확히 읽어내세요.
-        2. 한자 아이디나 닉네임은 한국식 한자음(예: 荷花小仙 -> 연화소선)으로 치환하거나 자연스럽게 의역하세요.
-        3. 어떠한 부연 설명이나 인사말도 출력하지 말고, 오직 번역된 결과만 깔끔하게 줄바꿈하여 출력하세요.
+        너는 한국어와 중국어가 완벽한 게임 전문 번역가야.
+        
+        [지시 사항]
+        1. 이미지 안에 있는 모든 텍스트(한자 닉네임, 한글, 숫자)를 정확히 읽어내라.
+        2. 한자 아이디/닉네임(예: 看看黑丝 -> 간간흑사, 老糊涂 -> 노호도)은 한국식 한자음으로 변환하고, 나머지 한글 문장과 결합하여 한국어로 자연스럽게 다듬어라.
+        3. 병음(pinyin), 영어 설명, 단어 풀이 등은 절대로 작성하지 마라.
+        4. 어떠한 인사말이나 서론 없이, 오직 번역된 결과 문장만 한 줄씩 깔끔하게 출력해라.
         """
 
         max_retries = len(API_KEYS)
         success = False
 
-        # 3. API 호출 및 해석본 수신
+        # 3. API 호출
         for attempt in range(max_retries):
             current_key = next(KEY_CYCLE)
             try:
@@ -172,11 +175,10 @@ class ManualTranslatorApp(QWidget):
                     ],
                     config=types.GenerateContentConfig(
                         max_output_tokens=400,
-                        temperature=0.2
+                        temperature=0.1
                     )
                 )
                 
-                # 4. 받아온 번역 결과를 텍스트 창에 출력
                 result_text = response.text.strip() if response.text else "인식된 텍스트가 없습니다."
                 self.txt_result.setText(result_text)
                 self.lbl_status.setText("상태: 번역 완료!")
