@@ -106,7 +106,7 @@ class ManualTranslatorApp(QWidget):
 
         # 결과 출력 창
         self.txt_result = QTextEdit(self)
-        self.txt_result.setPlaceholderText("버튼을 누르면 해당 영역을 캡처하여 한자 닉네임을 치환한 한국어 문장을 출력합니다.")
+        self.txt_result.setPlaceholderText("버튼을 누르면 해당 영역을 캡처하여 한자는 그대로 유지한 채 한국어로 출력합니다.")
         self.txt_result.setReadOnly(True)
         layout.addWidget(self.txt_result)
 
@@ -137,7 +137,7 @@ class ManualTranslatorApp(QWidget):
         self.lbl_status.setText("상태: 이미지 캡처 후 Gemini 분석 중...")
         QApplication.processEvents()
 
-        # 1. 화면 지정 영역 캡처 및 2배 확대 (OCR 인식율 보완)
+        # 1. 화면 지정 영역 캡처 (2배 확대)
         img = ImageGrab.grab(bbox=self.target_coords)
         img_rgb = img.convert("RGB")
         w, h = img_rgb.size
@@ -147,22 +147,13 @@ class ManualTranslatorApp(QWidget):
         img_rgb.save(buffer, format="JPEG", quality=95)
         image_bytes = buffer.getvalue()
 
-        # 2. 대화창 내부 사고 방식이 그대로 반영된 핵심 프롬프트
-        prompt = """
-        [게임 로그 전용 번역 지침]
-        1. 이미지 속 텍스트는 한글 게임 문장 안에 한자 닉네임이 섞여 있다.
-        2. 한글 문장을 통째로 새로 번역하지 말고, '看看黑丝', '老糊涂' 같은 한자 닉네임 부분만 추출하여 한국 한자음(예: 간간흑사, 노호도)으로 바꿔라.
-        3. 변환된 한국식 닉네임을 기존 한글 문장의 원래 한자 위치에 넣고, 조사가 자연스러운 완전한 한국어 문장으로 정돈해라.
-        4. 영어, 병음, 단어 해설, 교정 의견, 인사말은 절대 포함하지 말고 오직 정돈된 한국어 문장만 한 줄씩 출력해라.
-        """
-
-        # 3. 모델의 역할을 번역 전용 엔진으로 고정
-        system_instruction = "너는 게임 로그 캡처 이미지에서 한자 닉네임만 한국 한자음으로 치환하여 완성된 한글 문장만 정밀하게 출력하는 번역 전용 AI이다."
+        # 2. 한자 닉네임을 원문 그대로 유지하도록 지정한 프롬프트
+        prompt = "이 이미지 속 문장을 번역해줘. 한자/아이디/닉네임은 바꾸지 말고 한자 그대로 유지하고, 나머지 문장만 자연스러운 한국어로 완성해서 출력해줘."
 
         max_retries = len(API_KEYS)
         success = False
 
-        # 4. API 호출
+        # 3. API 호출
         for attempt in range(max_retries):
             current_key = next(KEY_CYCLE)
             try:
@@ -175,9 +166,7 @@ class ManualTranslatorApp(QWidget):
                         prompt
                     ],
                     config=types.GenerateContentConfig(
-                        system_instruction=system_instruction,
-                        max_output_tokens=400,
-                        temperature=0.0  # 딴소리/피드백 차단을 위해 0으로 설정
+                        temperature=0.2
                     )
                 )
                 
@@ -190,7 +179,7 @@ class ManualTranslatorApp(QWidget):
             except Exception as e:
                 err_msg = str(e)
                 if attempt < max_retries - 1:
-                    self.lbl_status.setText(f"⚠️ 요청 지연. 다른 키로 재시도 중... ({attempt + 1}/{max_retries})")
+                    self.lbl_status.setText(f"⚠️ 요청 지연. 재시도 중... ({attempt + 1}/{max_retries})")
                     QApplication.processEvents()
 
         if not success:
