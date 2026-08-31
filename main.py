@@ -62,7 +62,7 @@ class GeminiTranslatorApp(QWidget):
     def __init__(self):
         super().__init__()
         print("OCR 모델 및 Gemini 클라이언트 로딩 중...")
-        self.ocr_reader = easyocr.Reader(['ch_sim', 'en'])
+        self.ocr_reader = easyocr.Reader(['ch_sim', 'en'], gpu=False)
         
         self.ai_client = genai.Client(api_key=GEMINI_API_KEY)
         
