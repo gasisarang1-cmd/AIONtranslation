@@ -1,6 +1,7 @@
 import sys
 import os
-from PIL import ImageGrab
+import io
+from PIL import ImageGrab, Image
 from google import genai
 from google.genai import types
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QPushButton
@@ -62,7 +63,6 @@ class ScreenCaptureTool(QWidget):
 class GeminiTranslatorApp(QWidget):
     def __init__(self):
         super().__init__()
-        print("Gemini 클라이언트 로딩 중...")
         self.ai_client = genai.Client(api_key=GEMINI_API_KEY)
         self.initUI()
 
@@ -107,25 +107,33 @@ class GeminiTranslatorApp(QWidget):
             self.process_vision_translate(img_path)
 
     def process_vision_translate(self, img_path):
-        self.lbl_original.setText("이미지 분석 및 번역 중...")
-        self.lbl_translated.setText("Gemini 처리 중...")
+        self.lbl_original.setText("분석 중...")
+        self.lbl_translated.setText("번역 중...")
         QApplication.processEvents()
 
         try:
-            # 캡처한 이미지를 Gemini Vision 모델에 직접 전달
-            with open(img_path, 'rb') as f:
-                image_bytes = f.read()
+            # 1. 이미지용량 압축 (JPEG 경량화로 업로드 속도 단축)
+            with Image.open(img_path) as img:
+                img = img.convert("RGB")
+                buffer = io.BytesIO()
+                img.save(buffer, format="JPEG", quality=80)
+                image_bytes = buffer.getvalue()
 
-            prompt = "이 이미지에 있는 외국어(중국어 등) 글자를 읽고, 매끄러운 한국어로 번역해줘. 오직 번역된 한국어 결과만 출력해."
+            prompt = "이미지 속 외국어를 즉시 한국어로 번역해서 결과 문장만 출력해."
             
+            # 2. 3.6-flash 모델 + 연산 제어로 속도 최적화
             response = self.ai_client.models.generate_content(
                 model='gemini-3.6-flash',
                 contents=[
-                    types.Part.from_bytes(data=image_bytes, mime_type='image/png'),
+                    types.Part.from_bytes(data=image_bytes, mime_type='image/jpeg'),
                     prompt
-                ]
+                ],
+                config=types.GenerateContentConfig(
+                    max_output_tokens=300,
+                    temperature=0.1
+                )
             )
-            self.lbl_original.setText("상태: 분석 완료")
+            self.lbl_original.setText("상태: 완료")
             self.lbl_translated.setText(f"Gemini 번역 결과:\n{response.text.strip()}")
         except Exception as e:
             self.lbl_translated.setText(f"번역 오류 발생: {e}")
