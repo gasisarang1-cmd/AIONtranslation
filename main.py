@@ -1,13 +1,14 @@
 import sys
-from rapidocr_onnxruntime import RapidOCR
+import os
 from PIL import ImageGrab
 from google import genai
+from google.genai import types
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QPushButton
 from PyQt5.QtCore import Qt, QRect
 from PyQt5.QtGui import QPainter, QBrush, QColor, QPen
 
 # =========================================================
-# Gemini API 설정 (발급받은 API 키를 여기에 입력하세요)
+# Gemini API 설정
 GEMINI_API_KEY = "AQ.Ab8RN6IN-_oj4m5SYxmRCnEZTSdEVpFWGrMAzPOIHv3BzSr4Yg"
 # =========================================================
 
@@ -61,16 +62,12 @@ class ScreenCaptureTool(QWidget):
 class GeminiTranslatorApp(QWidget):
     def __init__(self):
         super().__init__()
-        print("OCR 엔진 및 Gemini 클라이언트 로딩 중...")
-        # RapidOCR 초기화 (기본적으로 중국어/영어 모델 자동 포함)
-        self.ocr_engine = RapidOCR()
-        
+        print("Gemini 클라이언트 로딩 중...")
         self.ai_client = genai.Client(api_key=GEMINI_API_KEY)
-        
         self.initUI()
 
     def initUI(self):
-        self.setWindowTitle("Gemini 기반 중국어 화면 번역기")
+        self.setWindowTitle("Gemini 기반 화면 번역기")
         self.setGeometry(300, 300, 450, 280)
         self.setWindowFlags(Qt.WindowStaysOnTopHint)
 
@@ -81,7 +78,7 @@ class GeminiTranslatorApp(QWidget):
         self.btn_capture.clicked.connect(self.start_capture)
         layout.addWidget(self.btn_capture)
 
-        self.lbl_original = QLabel("인식된 중국어: -", self)
+        self.lbl_original = QLabel("상태: 대기 중", self)
         self.lbl_original.setWordWrap(True)
         layout.addWidget(self.lbl_original)
 
@@ -105,33 +102,30 @@ class GeminiTranslatorApp(QWidget):
 
         if coords and (coords[2] - coords[0] > 5) and (coords[3] - coords[1] > 5):
             img = ImageGrab.grab(bbox=coords)
-            img.save("temp_capture.png")
-            self.process_ocr_and_translate("temp_capture.png")
+            img_path = "temp_capture.png"
+            img.save(img_path)
+            self.process_vision_translate(img_path)
 
-    def process_ocr_and_translate(self, img_path):
-        # RapidOCR 인식 수행
-        result, _ = self.ocr_engine(img_path)
-        
-        extracted_text = ""
-        if result:
-            # 인식 결과 추출 (bbox, text, score 중 text만 결합)
-            extracted_text = " ".join([line[1] for line in result])
-        
-        if not extracted_text.strip():
-            self.lbl_original.setText("인식된 중국어: (인식된 글자 없음)")
-            self.lbl_translated.setText("Gemini 번역 결과: -")
-            return
-
-        self.lbl_original.setText(f"인식된 중국어: {extracted_text}")
-        self.lbl_translated.setText("Gemini 번역 중...")
+    def process_vision_translate(self, img_path):
+        self.lbl_original.setText("이미지 분석 및 번역 중...")
+        self.lbl_translated.setText("Gemini 처리 중...")
         QApplication.processEvents()
 
         try:
-            prompt = f"다음 중국어 문장을 문맥에 맞게 매끄러운 한국어로 번역해줘. 오직 번역 결과만 출력해:\n{extracted_text}"
+            # 캡처한 이미지를 Gemini Vision 모델에 직접 전달
+            with open(img_path, 'rb') as f:
+                image_bytes = f.read()
+
+            prompt = "이 이미지에 있는 외국어(중국어 등) 글자를 읽고, 매끄러운 한국어로 번역해줘. 오직 번역된 한국어 결과만 출력해."
+            
             response = self.ai_client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=prompt,
+                contents=[
+                    types.Part.from_bytes(data=image_bytes, mime_type='image/png'),
+                    prompt
+                ]
             )
+            self.lbl_original.setText("상태: 분석 완료")
             self.lbl_translated.setText(f"Gemini 번역 결과:\n{response.text.strip()}")
         except Exception as e:
             self.lbl_translated.setText(f"번역 오류 발생: {e}")
@@ -141,3 +135,39 @@ if __name__ == '__main__':
     ex = GeminiTranslatorApp()
     ex.show()
     sys.exit(app.exec_())
+방안 1 선택 시 .github/workflows/build.yml:
+
+YAML
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install PyQt5 pillow google-genai pyinstaller
+
+    - name: Build EXE with PyInstaller
+      run: |
+        pyinstaller --noconfirm --noconsole --onefile main.py
+
+    - name: Upload EXE artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: GeminiTranslator-EXE
+        path: dist/main.exe
